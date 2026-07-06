@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src ${cspSource};">
+    <title>2048 Game</title>
+    <link rel="stylesheet" href="${styleUri}">
+</head>
+<body>
+    <div class="container">
+        <div class="game-header">
+            <h1>2048</h1>
+            <div class="score-board">
+                <div class="score-item">
+                    <span class="score-label">Score</span>
+                    <span class="score-value" id="score">0</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">Best</span>
+                    <span class="score-value" id="bestScore">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-board-wrapper">
+            <div class="game-board" id="gameBoard">
+                <!-- Tiles will be generated here -->
+            </div>
+
+            <div class="game-message" id="gameMessage">
+                <p id="gameMessageText"></p>
+                <div class="game-message-buttons">
+                    <button id="keepPlayingBtn" class="btn btn-secondary">Keep going</button>
+                    <button id="tryAgainBtn" class="btn btn-primary">Try again</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="arrow-controls">
+                <button class="arrow-btn up" id="upBtn" title="Move Up">↑</button>
+                <div class="middle-row">
+                    <button class="arrow-btn left" id="leftBtn" title="Move Left">←</button>
+                    <button class="arrow-btn down" id="downBtn" title="Move Down">↓</button>
+                    <button class="arrow-btn right" id="rightBtn" title="Move Right">→</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-info">
+            <p id="gameStatus">Tip: Use WASD or HJKL or arrow keys to play</p>
+        </div>
+
+        <button id="newGameBtn" class="btn btn-primary full-width">New Game</button>
+    </div>
+
+    <script src="${scriptUri}"></script>
+</body>
+</html>

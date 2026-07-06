@@ -1,0 +1,339 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    padding: 16px;
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+    user-select: none;
+}
+
+.container {
+    max-width: 100%;
+}
+
+.game-header {
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+h1 {
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: var(--vscode-textLink-foreground);
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.score-board {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.score-item {
+    background-color: var(--vscode-button-background);
+    padding: 8px 16px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.score-label {
+    font-size: 11px;
+    color: var(--vscode-button-foreground);
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.score-value {
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--vscode-button-foreground);
+    margin-top: 4px;
+}
+
+/* Game Board */
+.game-board-wrapper {
+    position: relative;
+}
+
+.game-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-gap: 8px;
+    background-color: var(--vscode-input-background);
+    padding: 8px;
+    border-radius: 6px;
+    aspect-ratio: 1;
+    margin-bottom: 16px;
+    border: 2px solid var(--vscode-textLink-foreground);
+}
+
+/* Game Over / Win overlay */
+.game-message {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border-radius: 6px;
+    text-align: center;
+    background-color: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.game-message.show {
+    opacity: 1;
+    pointer-events: auto;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.game-message p {
+    margin: 0;
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.game-message.game-over p {
+    color: #ff6b6b;
+}
+
+.game-message.game-won p {
+    color: #f2d94e;
+}
+
+.game-message-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.game-message-buttons .btn {
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+.tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 24px;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    transition: all 0.15s ease-in-out;
+    position: relative;
+}
+
+.tile.empty {
+    background-color: var(--vscode-sideBar-background);
+    color: transparent;
+}
+
+/* Tile colors based on value - using VS Code theme colors */
+.tile[data-value="2"] {
+    background-color: var(--vscode-terminal-ansiWhite);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="4"] {
+    background-color: var(--vscode-terminal-ansiYellow);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="8"] {
+    background-color: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="16"] {
+    background-color: var(--vscode-terminal-ansiCyan);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="32"] {
+    background-color: var(--vscode-terminal-ansiBlue);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="64"] {
+    background-color: var(--vscode-terminal-ansiMagenta);
+    color: var(--vscode-editor-background);
+}
+
+.tile[data-value="128"] {
+    background-color: var(--vscode-terminal-ansiRed);
+    color: var(--vscode-editor-background);
+    font-size: 20px;
+}
+
+.tile[data-value="256"] {
+    background-color: var(--vscode-notificationLink-foreground);
+    color: var(--vscode-editor-background);
+    font-size: 20px;
+}
+
+.tile[data-value="512"] {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-size: 18px;
+}
+
+.tile[data-value="1024"] {
+    background-color: var(--vscode-button-hoverBackground);
+    color: var(--vscode-button-foreground);
+    font-size: 18px;
+}
+
+.tile[data-value="2048"] {
+    background-color: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
+    font-size: 20px;
+    box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+}
+
+.tile[data-value="4096"],
+.tile[data-value="8192"],
+.tile[data-value="16384"] {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-textLink-foreground);
+    font-size: 16px;
+}
+
+/* Controls */
+.controls {
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: center;
+}
+
+.arrow-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.middle-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.arrow-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    border: 2px solid var(--vscode-textLink-foreground);
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-weight: bold;
+}
+
+.arrow-btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+    transform: scale(1.1);
+}
+
+.arrow-btn:active {
+    transform: scale(0.95);
+}
+
+/* Game Info */
+.game-info {
+    background-color: transparent;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    text-align: center;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--vscode-textLink-foreground);
+}
+
+#gameStatus {
+    font-size: 14px;
+    color: var(--vscode-textLink-foreground);
+    margin: 0;
+}
+
+/* Button */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.btn-primary:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.btn-secondary {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.btn-secondary:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.full-width {
+    width: 100%;
+}
+
+/* Responsive adjustments for small screens */
+@media (max-width: 400px) {
+    .game-board {
+        grid-gap: 6px;
+        padding: 6px;
+    }
+
+    .tile {
+        font-size: 20px;
+    }
+
+    .game-message p {
+        font-size: 22px;
+    }
+
+    h1 {
+        font-size: 28px;
+    }
+
+    .arrow-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 20px;
+    }
+}

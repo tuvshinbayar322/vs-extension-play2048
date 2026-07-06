@@ -1,0 +1,75 @@
+{
+  "name": "lets-play-2048",
+  "displayName": "Let's Play 2048",
+  "description": "Play 2048 in a sidebar or panel without leaving VS Code.",
+  "version": "0.0.1",
+  "publisher": "changeme-publisher",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "keywords": [
+    "2048",
+    "game",
+    "puzzle",
+    "fun",
+    "break"
+  ],
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "play-2048-explorer",
+          "title": "2048",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "play-2048-explorer": [
+        {
+          "id": "play2048Panel",
+          "name": "2048",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "lets-play-2048.play2048",
+        "title": "Play 2048"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "lets-play-2048.play2048",
+        "key": "ctrl+alt+2"
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test",
+    "package": "vsce package --no-rewrite-relative-links"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.125.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "eslint": "^10.5.0",
+    "globals": "^17.7.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}

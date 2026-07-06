@@ -1,0 +1,48 @@
+# lets-play-2048
+
+Play a full game of 2048 right inside VS Code — in the sidebar or in an editor panel — without ever leaving your workspace.
+
+## Features
+
+- **Play from the sidebar or a panel.** Open the game from the activity bar view or launch it beside your editor with a command/keybinding.
+- **Classic 2048 rules.** Slide tiles with arrow keys, WASD, or Vim-style HJKL; merge matching tiles; reach 2048 to win.
+- **On-screen controls.** Arrow buttons are available for mouse/touch play in addition to the keyboard.
+- **Score tracking.** Current score and best score are shown live; best score is remembered between sessions.
+- **Win and game-over handling.** A "You Win!" overlay appears at 2048 with the option to keep playing for a higher score; a "Game Over" overlay appears when no moves remain.
+- **Game state persistence.** Your board, score, and game status are saved automatically and restored the next time you open VS Code.
+- **Theme-aware styling.** The board and controls adapt to your current VS Code color theme.
+
+## Getting Started
+
+- Open the **2048** view from the activity bar (look for the game icon), or
+- Run the **Play 2048** command from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`), or
+- Use the keybinding `Ctrl+Alt+2` to toggle the game panel.
+
+### Controls
+
+| Action | Keys |
+|---|---|
+| Move up | `↑`, `W`, `K` |
+| Move down | `↓`, `S`, `J` |
+| Move left | `←`, `A`, `H` |
+| Move right | `→`, `D`, `L` |
+
+You can also use the on-screen arrow buttons, or click **New Game** to start over at any time.
+
+## Requirements
+
+None. The extension has no external dependencies and works out of the box.
+
+## Extension Settings
+
+This extension does not currently contribute any VS Code settings.
+
+## Known Issues
+
+- Game state is stored per VS Code installation (via global storage), not synced across machines.
+
+## Release Notes
+
+See [CHANGELOG.md](CHANGELOG.md) for details on each release.
+
+**Enjoy!**
