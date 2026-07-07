@@ -6,6 +6,13 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [0.0.4]
+
+### Fixed
+- Game Over screen is now in front of the blocks.
+
+## [0.0.3] - accidental version (no changes)
+
 ## [0.0.2] - 2026-07-07
 
 ### Added
