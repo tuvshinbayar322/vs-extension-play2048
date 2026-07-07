@@ -6,6 +6,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [0.1.0]
+
+### Added
+- "AI Take Over" button: an expectimax AI plays the game automatically until no moves remain. Toggle it off anytime to resume playing yourself. The best score is not affected while the AI is (or has been) in control of a game.
+
+### Changed
+- Reaching 2048 no longer pauses the game. A brief congratulations toast appears and play continues until the board is full with no moves left. The "Keep going" win overlay has been removed.
+
 ## [0.0.4]
 
 ### Fixed

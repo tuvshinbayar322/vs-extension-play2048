@@ -40,17 +40,17 @@ class Game2048 {
         this.score = 0;
         this.gameOver = false;
         this.won = false;
-        this.keepPlaying = false;
+        this.justWon = false;
+        this.aiTainted = false; // AI played this game: best score is frozen
         this.removed = [];
         this.clearBoardDom();
         this.addRandomTile();
         this.addRandomTile();
     }
 
-    // True once the game shouldn't accept moves until the player dismisses
-    // the game-over or win overlay.
+    // True once the game shouldn't accept moves (board is dead).
     isInputBlocked() {
-        return this.gameOver || (this.won && !this.keepPlaying);
+        return this.gameOver;
     }
 
     inBounds(r, c) {
@@ -152,6 +152,7 @@ class Game2048 {
             this.addRandomTile();
             if (!this.won && this.hasWon()) {
                 this.won = true;
+                this.justWon = true;
             }
             this.checkGameOver();
             try { saveState(); } catch { /* ignore */ }
@@ -160,6 +161,7 @@ class Game2048 {
     }
 
     updateBestScore() {
+        if (this.aiTainted) return;
         if (this.score > this.bestScore) {
             this.bestScore = this.score;
             localStorage.setItem('2048-best', this.bestScore);
@@ -320,6 +322,20 @@ class Game2048 {
 
         this.renderScore();
         this.renderMessage();
+
+        if (this.justWon) {
+            this.justWon = false;
+            this.showCongrats();
+        }
+    }
+
+    // Non-blocking congrats toast shown when 2048 is first reached.
+    showCongrats() {
+        const toast = document.getElementById('congratsToast');
+        if (!toast) return;
+        toast.classList.add('show');
+        clearTimeout(this.congratsTimer);
+        this.congratsTimer = setTimeout(() => toast.classList.remove('show'), 4000);
     }
 
     // Reposition tiles without animating (used on container resize).
@@ -344,23 +360,18 @@ class Game2048 {
     renderMessage() {
         const messageEl = document.getElementById('gameMessage');
         const messageText = document.getElementById('gameMessageText');
-        const keepPlayingBtn = document.getElementById('keepPlayingBtn');
 
         if (this.gameOver) {
-            messageText.textContent = '🎮 Game Over!';
+            messageText.textContent = this.won ? '🎉 Game Over — you made 2048!' : '🎮 Game Over!';
             messageEl.className = 'game-message game-over show';
-            keepPlayingBtn.style.display = 'none';
             document.getElementById('gameStatus').textContent = 'Click "Try Again" to start a new game.';
-        } else if (this.won && !this.keepPlaying) {
-            messageText.textContent = '🎉 You Win!';
-            messageEl.className = 'game-message game-won show';
-            keepPlayingBtn.style.display = '';
-            document.getElementById('gameStatus').textContent = 'You reached 2048!';
         } else {
             messageEl.className = 'game-message';
-            document.getElementById('gameStatus').textContent = this.won
-                ? '🎉 Keep going for a higher score!'
-                : 'Tip: Use WASD or HJKL or arrow keys to play';
+            document.getElementById('gameStatus').textContent = aiActive
+                ? '🤖 AI is playing… (best score is not affected)'
+                : this.won
+                    ? '🎉 Keep going for a higher score!'
+                    : 'Tip: Use WASD or HJKL or arrow keys to play';
         }
     }
 
@@ -381,7 +392,8 @@ class Game2048 {
         this.bestScore = s.bestScore || this.bestScore;
         this.gameOver = !!s.gameOver;
         this.won = !!s.won;
-        this.keepPlaying = !!s.keepPlaying;
+        this.justWon = false;
+        this.aiTainted = !!s.aiTainted;
         localStorage.setItem('2048-best', this.bestScore);
     }
 }
@@ -401,7 +413,7 @@ function saveState() {
                 bestScore: game.bestScore,
                 gameOver: game.gameOver,
                 won: game.won,
-                keepPlaying: game.keepPlaying
+                aiTainted: game.aiTainted
             }
         });
         localStorage.setItem('2048-best', game.bestScore);
@@ -430,13 +442,202 @@ const leftBtn = document.getElementById('leftBtn');
 const rightBtn = document.getElementById('rightBtn');
 const newGameBtn = document.getElementById('newGameBtn');
 const tryAgainBtn = document.getElementById('tryAgainBtn');
-const keepPlayingBtn = document.getElementById('keepPlayingBtn');
 
 function doMove(direction) {
-    if (game.isInputBlocked()) return;
+    if (aiActive || game.isInputBlocked()) return;
     game.move(direction);
     game.render();
 }
+
+// ---------------- AI (expectimax search) ----------------
+
+const AI_DIRECTIONS = ['up', 'down', 'left', 'right'];
+
+// Slide + merge one 4-cell line toward index 0.
+function aiSlideLine(line) {
+    const tiles = line.filter(v => v !== 0);
+    const out = [];
+    for (let i = 0; i < tiles.length; i++) {
+        if (i + 1 < tiles.length && tiles[i] === tiles[i + 1]) {
+            out.push(tiles[i] * 2);
+            i++;
+        } else {
+            out.push(tiles[i]);
+        }
+    }
+    while (out.length < 4) out.push(0);
+    return out;
+}
+
+// Apply a move to a plain numeric grid. Returns the new grid, or null if
+// nothing moved.
+function aiSimulate(grid, direction) {
+    const g = grid.map(r => r.slice());
+    const horizontal = direction === 'left' || direction === 'right';
+    const reversed = direction === 'right' || direction === 'down';
+    let moved = false;
+
+    for (let i = 0; i < 4; i++) {
+        let line = horizontal
+            ? g[i].slice()
+            : [g[0][i], g[1][i], g[2][i], g[3][i]];
+        if (reversed) line.reverse();
+        line = aiSlideLine(line);
+        if (reversed) line.reverse();
+        for (let j = 0; j < 4; j++) {
+            const target = horizontal ? [i, j] : [j, i];
+            if (g[target[0]][target[1]] !== line[j]) moved = true;
+            g[target[0]][target[1]] = line[j];
+        }
+    }
+    return moved ? g : null;
+}
+
+// Board quality heuristic: prefer empty space, monotone rows/columns
+// (big tiles packed toward one side), smooth neighbor values, and a high
+// max tile.
+function aiEvaluate(grid) {
+    let empty = 0;
+    let smooth = 0;
+    let maxVal = 2;
+
+    for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+            const v = grid[r][c];
+            if (!v) { empty++; continue; }
+            if (v > maxVal) maxVal = v;
+            const lv = Math.log2(v);
+            // Smoothness: penalize value gaps to the nearest tile right/down.
+            for (const [dr, dc] of [[0, 1], [1, 0]]) {
+                let nr = r + dr, nc = c + dc;
+                while (nr < 4 && nc < 4 && !grid[nr][nc]) { nr += dr; nc += dc; }
+                if (nr < 4 && nc < 4) smooth -= Math.abs(lv - Math.log2(grid[nr][nc]));
+            }
+        }
+    }
+
+    // Monotonicity: for each row/column take the better of the two
+    // directions (penalties are negative, so max = least broken).
+    let mono = 0;
+    for (let i = 0; i < 4; i++) {
+        let rowInc = 0, rowDec = 0, colInc = 0, colDec = 0;
+        for (let j = 0; j < 3; j++) {
+            const a = grid[i][j] ? Math.log2(grid[i][j]) : 0;
+            const b = grid[i][j + 1] ? Math.log2(grid[i][j + 1]) : 0;
+            if (a > b) rowDec += b - a; else rowInc += a - b;
+            const ca = grid[j][i] ? Math.log2(grid[j][i]) : 0;
+            const cb = grid[j + 1][i] ? Math.log2(grid[j + 1][i]) : 0;
+            if (ca > cb) colDec += cb - ca; else colInc += ca - cb;
+        }
+        mono += Math.max(rowInc, rowDec) + Math.max(colInc, colDec);
+    }
+
+    return 2.7 * empty + 1.0 * mono + 0.1 * smooth + 1.0 * Math.log2(maxVal);
+}
+
+// Player node: best achievable value over all legal moves.
+function aiSearchMove(grid, depth) {
+    let best = -Infinity;
+    for (const dir of AI_DIRECTIONS) {
+        const next = aiSimulate(grid, dir);
+        if (next) best = Math.max(best, aiChance(next, depth));
+    }
+    return best === -Infinity ? -10000 : best; // no legal move = dead board
+}
+
+// Chance node: expected value over random tile spawns (2 with 90%, 4 with 10%).
+function aiChance(grid, depth) {
+    if (depth <= 0) return aiEvaluate(grid);
+
+    const empties = [];
+    for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+            if (!grid[r][c]) empties.push([r, c]);
+        }
+    }
+    if (empties.length === 0) return aiEvaluate(grid);
+
+    // Cap branching on open boards to keep the search fast.
+    let cells = empties;
+    if (cells.length > 6) {
+        cells = empties.slice();
+        for (let i = cells.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [cells[i], cells[j]] = [cells[j], cells[i]];
+        }
+        cells = cells.slice(0, 6);
+    }
+
+    let total = 0;
+    for (const [r, c] of cells) {
+        grid[r][c] = 2;
+        total += 0.9 * aiSearchMove(grid, depth - 1);
+        grid[r][c] = 4;
+        total += 0.1 * aiSearchMove(grid, depth - 1);
+        grid[r][c] = 0;
+    }
+    return total / cells.length;
+}
+
+// Find the best move for the current position (deeper search when the
+// board is crowded and decisions matter most).
+function findBestMove(grid) {
+    const empties = grid.flat().filter(v => !v).length;
+    const depth = empties >= 5 ? 2 : 3;
+
+    let bestDir = null;
+    let bestVal = -Infinity;
+    for (const dir of AI_DIRECTIONS) {
+        const next = aiSimulate(grid, dir);
+        if (!next) continue;
+        const val = aiChance(next, depth - 1);
+        if (val > bestVal) {
+            bestVal = val;
+            bestDir = dir;
+        }
+    }
+    return bestDir;
+}
+
+// ---------------- AI takeover mode ----------------
+
+const aiBtn = document.getElementById('aiBtn');
+let aiActive = false;
+let aiTimer = null;
+
+function updateAiButton() {
+    aiBtn.textContent = aiActive ? '🛑 Stop AI' : '🤖 AI Take Over';
+    aiBtn.classList.toggle('ai-active', aiActive);
+}
+
+function stopAI() {
+    if (aiTimer) clearTimeout(aiTimer);
+    aiTimer = null;
+    if (!aiActive) return;
+    aiActive = false;
+    updateAiButton();
+    game.renderMessage();
+}
+
+function aiStep() {
+    if (!aiActive || game.gameOver) { stopAI(); return; }
+    const dir = findBestMove(game.valueGrid());
+    if (!dir || !game.move(dir)) { stopAI(); game.render(); return; }
+    game.render();
+    if (game.gameOver) { stopAI(); return; }
+    aiTimer = setTimeout(aiStep, 140);
+}
+
+aiBtn.addEventListener('click', () => {
+    if (aiActive) { stopAI(); return; }
+    if (game.gameOver) return;
+    aiActive = true;
+    game.aiTainted = true; // AI plays for score, not for the record books
+    updateAiButton();
+    game.renderMessage();
+    try { saveState(); } catch { /* ignore */ }
+    aiStep();
+});
 
 // Button event listeners
 upBtn.addEventListener('click', () => doMove('up'));
@@ -445,19 +646,15 @@ leftBtn.addEventListener('click', () => doMove('left'));
 rightBtn.addEventListener('click', () => doMove('right'));
 
 newGameBtn.addEventListener('click', () => {
+    stopAI();
     game.init();
     game.render();
     try { saveState(); } catch { /* ignore */ }
 });
 
 tryAgainBtn.addEventListener('click', () => {
+    stopAI();
     game.init();
-    game.render();
-    try { saveState(); } catch { /* ignore */ }
-});
-
-keepPlayingBtn.addEventListener('click', () => {
-    game.keepPlaying = true;
     game.render();
     try { saveState(); } catch { /* ignore */ }
 });

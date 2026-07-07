@@ -152,6 +152,31 @@ h1 {
     font-size: 13px;
 }
 
+/* Non-blocking congrats toast (shown briefly when 2048 is first reached) */
+.congrats-toast {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translate(-50%, -8px);
+    padding: 10px 18px;
+    border-radius: 6px;
+    background-color: rgba(0, 0, 0, 0.75);
+    color: #f2d94e;
+    font-size: 16px;
+    font-weight: bold;
+    white-space: nowrap;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    z-index: 100;
+}
+
+.congrats-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
 /* Outer tile: positions itself over a slot and slides via transform */
 .tile {
     position: absolute;
@@ -363,6 +388,16 @@ h1 {
 
 .full-width {
     width: 100%;
+}
+
+#aiBtn {
+    margin-bottom: 8px;
+    border: 1px solid var(--vscode-textLink-foreground);
+}
+
+#aiBtn.ai-active {
+    background-color: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
 }
 
 /* Responsive adjustments for small screens */
