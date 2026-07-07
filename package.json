@@ -2,7 +2,7 @@
   "name": "lets-play-2048",
   "displayName": "Let's Play 2048",
   "description": "Play 2048 in a sidebar or panel without leaving VS Code.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "tuvshinbayar-mandakh",
   "license": "MIT",
   "icon": "media/icon.png",
