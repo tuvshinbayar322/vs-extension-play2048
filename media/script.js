@@ -422,13 +422,15 @@ function saveState() {
     }
 }
 
-// Handle incoming messages from the extension (e.g., load saved state)
+// Handle incoming messages from the extension: initial state restore and
+// live sync updates mirrored from the game in another view.
 window.addEventListener('message', event => {
     const message = event.data;
     if (message.command === 'loadState' && message.state) {
         try {
             game.loadFromState(message.state);
             game.render();
+            if (game.gameOver) stopAI();
         } catch {
             // ignore malformed state
         }
@@ -445,6 +447,7 @@ const tryAgainBtn = document.getElementById('tryAgainBtn');
 
 function doMove(direction) {
     if (aiActive || game.isInputBlocked()) return;
+    clearHint();
     game.move(direction);
     game.render();
 }
@@ -602,12 +605,37 @@ function findBestMove(grid) {
 // ---------------- AI takeover mode ----------------
 
 const aiBtn = document.getElementById('aiBtn');
+const stopAiBtn = document.getElementById('stopAiBtn');
+const actionButtons = document.getElementById('actionButtons');
+const aiControls = document.getElementById('aiControls');
+const aiSpeedSlider = document.getElementById('aiSpeedSlider');
+
+// Slider notch (1-10) -> ms between AI moves.
+const AI_SPEEDS = [500, 380, 280, 200, 140, 100, 70, 50, 35, 25];
+
 let aiActive = false;
 let aiTimer = null;
+let aiDelay = AI_SPEEDS[4];
 
-function updateAiButton() {
-    aiBtn.textContent = aiActive ? '🛑 Stop AI' : '🤖 AI Take Over';
-    aiBtn.classList.toggle('ai-active', aiActive);
+// Restore last used speed.
+{
+    const savedSpeed = Number(localStorage.getItem('2048-ai-speed'));
+    if (savedSpeed >= 1 && savedSpeed <= 10) {
+        aiSpeedSlider.value = savedSpeed;
+        aiDelay = AI_SPEEDS[savedSpeed - 1];
+    }
+}
+
+aiSpeedSlider.addEventListener('input', () => {
+    aiDelay = AI_SPEEDS[aiSpeedSlider.value - 1];
+    localStorage.setItem('2048-ai-speed', aiSpeedSlider.value);
+});
+
+// While the AI plays, the hint/take-over buttons give way to the
+// stop + speed-slider row.
+function updateAiUi() {
+    actionButtons.hidden = aiActive;
+    aiControls.hidden = !aiActive;
 }
 
 function stopAI() {
@@ -615,7 +643,7 @@ function stopAI() {
     aiTimer = null;
     if (!aiActive) return;
     aiActive = false;
-    updateAiButton();
+    updateAiUi();
     game.renderMessage();
 }
 
@@ -625,18 +653,50 @@ function aiStep() {
     if (!dir || !game.move(dir)) { stopAI(); game.render(); return; }
     game.render();
     if (game.gameOver) { stopAI(); return; }
-    aiTimer = setTimeout(aiStep, 140);
+    aiTimer = setTimeout(aiStep, aiDelay);
 }
 
 aiBtn.addEventListener('click', () => {
-    if (aiActive) { stopAI(); return; }
-    if (game.gameOver) return;
+    if (aiActive || game.gameOver) return;
     aiActive = true;
     game.aiTainted = true; // AI plays for score, not for the record books
-    updateAiButton();
+    clearHint();
+    updateAiUi();
     game.renderMessage();
     try { saveState(); } catch { /* ignore */ }
     aiStep();
+});
+
+stopAiBtn.addEventListener('click', stopAI);
+
+// ---------------- Hint (AI-suggested move, costs 10% of score) ----------------
+
+const hintBtn = document.getElementById('hintBtn');
+const DIRECTION_BUTTONS = { up: upBtn, down: downBtn, left: leftBtn, right: rightBtn };
+const DIRECTION_ARROWS = { up: '↑', down: '↓', left: '←', right: '→' };
+let hintTimer = null;
+
+function clearHint() {
+    clearTimeout(hintTimer);
+    hintTimer = null;
+    for (const el of Object.values(DIRECTION_BUTTONS)) el.classList.remove('hint-suggest');
+}
+
+hintBtn.addEventListener('click', () => {
+    if (aiActive || game.isInputBlocked()) return;
+    const dir = findBestMove(game.valueGrid());
+    if (!dir) return;
+
+    const penalty = Math.floor(game.score * 0.1);
+    game.score -= penalty;
+    game.renderScore();
+    try { saveState(); } catch { /* ignore */ }
+
+    clearHint();
+    DIRECTION_BUTTONS[dir].classList.add('hint-suggest');
+    hintTimer = setTimeout(clearHint, 2000);
+    document.getElementById('gameStatus').textContent =
+        `💡 Hint: move ${DIRECTION_ARROWS[dir]} ${dir}` + (penalty ? ` (−${penalty} points)` : '');
 });
 
 // Button event listeners
@@ -706,3 +766,12 @@ window.addEventListener('load', () => {
 
 // Initial render
 game.render();
+
+// Ask the extension for the latest saved state. Sent from the script (rather
+// than pushed on a timer by the extension) so it also covers this webview
+// being re-created after its view was hidden.
+try {
+    vscode.postMessage({ command: 'requestState' });
+} catch {
+    // ignore if postMessage not available
+}

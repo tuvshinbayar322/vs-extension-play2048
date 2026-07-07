@@ -390,14 +390,57 @@ h1 {
     width: 100%;
 }
 
-#aiBtn {
+.button-row {
+    display: flex;
+    gap: 8px;
     margin-bottom: 8px;
+}
+
+.button-row .btn {
+    flex: 1;
     border: 1px solid var(--vscode-textLink-foreground);
 }
 
-#aiBtn.ai-active {
+/* AI-mode control row (replaces the hint/take-over buttons while AI plays) */
+.ai-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.button-row[hidden],
+.ai-controls[hidden] {
+    display: none;
+}
+
+.ai-controls .btn {
+    padding: 8px 14px;
+    border: 1px solid var(--vscode-textLink-foreground);
+    white-space: nowrap;
+}
+
+.speed-icon {
+    font-size: 16px;
+}
+
+#aiSpeedSlider {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+}
+
+/* Pulse the arrow button the AI suggests */
+.arrow-btn.hint-suggest {
+    animation: hint-pulse 0.5s ease 3;
     background-color: var(--vscode-textLink-foreground);
     color: var(--vscode-editor-background);
+}
+
+@keyframes hint-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
 }
 
 /* Responsive adjustments for small screens */

@@ -73,7 +73,16 @@
             <p id="gameStatus">Tip: Use WASD or HJKL or arrow keys to play</p>
         </div>
 
-        <button id="aiBtn" class="btn btn-secondary full-width">🤖 AI Take Over</button>
+        <div class="button-row" id="actionButtons">
+            <button id="hintBtn" class="btn btn-secondary">💡 Hint (−10%)</button>
+            <button id="aiBtn" class="btn btn-secondary">🤖 AI Take Over</button>
+        </div>
+        <div class="ai-controls" id="aiControls" hidden>
+            <button id="stopAiBtn" class="btn btn-secondary">🛑 Stop</button>
+            <span class="speed-icon">🐢</span>
+            <input type="range" id="aiSpeedSlider" min="1" max="10" step="1" value="5" title="AI speed">
+            <span class="speed-icon">🐇</span>
+        </div>
         <button id="newGameBtn" class="btn btn-primary full-width">New Game</button>
     </div>
 

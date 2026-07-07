@@ -6,11 +6,9 @@ Play a full game of 2048 right inside VS Code — in the sidebar or in an editor
 
 - **Play from the sidebar or a panel.** Open the game from the activity bar view or launch it beside your editor with a command/keybinding.
 - **Classic 2048 rules.** Slide tiles with arrow keys, WASD, or Vim-style HJKL; merge matching tiles; reach 2048 to win.
-- **On-screen controls.** Arrow buttons are available for mouse/touch play in addition to the keyboard.
-- **Score tracking.** Current score and best score are shown live; best score is remembered between sessions.
-- **Win and game-over handling.** A "You Win!" overlay appears at 2048 with the option to keep playing for a higher score; a "Game Over" overlay appears when no moves remain.
 - **Game state persistence.** Your board, score, and game status are saved automatically and restored the next time you open VS Code.
 - **Theme-aware styling.** The board and controls adapt to your current VS Code color theme.
+- **AI Mode.** You can even watch how AI plays the game.
 
 ## Getting Started
 

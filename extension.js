@@ -18,9 +18,55 @@ function activate(context) {
 	// Store the panel reference
 	let panel = undefined;
 
+	// All live game webviews (activity-bar view and/or command panel).
+	// A state change in one is broadcast to the others so every view shows
+	// the same game at all times.
+	const gameWebviews = new Set();
+
 	// Helper to load saved game state from globalState
 	const loadSavedState = () => {
 		return context.globalState.get('2048-state') || null;
+	};
+
+	const broadcastState = (state, sender) => {
+		for (const webview of gameWebviews) {
+			if (webview === sender) continue;
+			try {
+				webview.postMessage({ command: 'loadState', state });
+			} catch {
+				// webview was disposed; it will be dropped on its dispose event
+			}
+		}
+	};
+
+	// Shared wiring for both the activity-bar view and the command panel.
+	const registerGameWebview = (webview) => {
+		gameWebviews.add(webview);
+		webview.onDidReceiveMessage(
+			message => {
+				switch (message.command) {
+					case 'hello':
+						vscode.window.showInformationMessage(message.text);
+						break;
+					case 'saveState':
+						// Persist the game state and mirror it to other views
+						context.globalState.update('2048-state', message.state);
+						broadcastState(message.state, webview);
+						break;
+					case 'requestState': {
+						// Sent by the webview script on startup (covers both
+						// first load and re-creation after being hidden)
+						const saved = loadSavedState();
+						if (saved) {
+							webview.postMessage({ command: 'loadState', state: saved });
+						}
+						break;
+					}
+				}
+			},
+			undefined,
+			context.subscriptions
+		);
 	};
 
 	// Register the command to show/toggle the panel
@@ -39,41 +85,21 @@ function activate(context) {
 			vscode.ViewColumn.Beside,
 			{
 				enableScripts: true,
+				// Keep the game alive (and receiving sync updates) while the
+				// panel tab is in the background
+				retainContextWhenHidden: true,
 				localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'media'))]
 			}
 		);
 
 		// Set the webview content
 		updateWebviewContent(panel, context);
-
-		// Send saved state (if any) to the webview to restore the game
-		setTimeout(() => {
-			const saved = loadSavedState();
-			if (saved) {
-				panel.webview.postMessage({ command: 'loadState', state: saved });
-			}
-		}, 50);
-
-		// Handle messages from the webview
-		panel.webview.onDidReceiveMessage(
-			message => {
-				switch (message.command) {
-					case 'hello':
-						vscode.window.showInformationMessage(message.text);
-						break;
-					case 'saveState':
-						// Persist the game state in globalState
-						context.globalState.update('2048-state', message.state);
-						break;
-				}
-			},
-			undefined,
-			context.subscriptions
-		);
+		registerGameWebview(panel.webview);
 
 		// Handle panel disposal
 		panel.onDidDispose(
 			() => {
+				gameWebviews.delete(panel.webview);
 				panel = undefined;
 			},
 			undefined,
@@ -94,29 +120,11 @@ function activate(context) {
 				};
 
 				updateWebviewContent({ webview: webviewView.webview }, context);
+				registerGameWebview(webviewView.webview);
 
-				// Send saved state to the webview (if exists)
-				setTimeout(() => {
-					const saved = loadSavedState();
-					if (saved) {
-						webviewView.webview.postMessage({ command: 'loadState', state: saved });
-					}
-				}, 50);
-
-				webviewView.webview.onDidReceiveMessage(
-					message => {
-						switch (message.command) {
-							case 'hello':
-								vscode.window.showInformationMessage(message.text);
-								break;
-							case 'saveState':
-								context.globalState.update('2048-state', message.state);
-								break;
-						}
-					},
-					undefined,
-					context.subscriptions
-				);
+				webviewView.onDidDispose(() => {
+					gameWebviews.delete(webviewView.webview);
+				});
 			}
 		}
 	);

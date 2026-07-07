@@ -2,9 +2,16 @@
 
 All notable changes to the "lets-play-2048" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
 ## [Unreleased]
+
+## [0.1.1]
+
+### Added
+- "Hint" button: suggests the best move by highlighting the matching arrow button, at the cost of 10% of the current score.
+- AI speed slider: while the AI is playing, a slider replaces the Hint/AI Take Over buttons so you can slow it down or speed it up on the fly.
+
+### Fixed
+- The activity bar view and the command panel now stay in sync: a move, hint, or AI action made in one is immediately reflected in the other, and both persist to the same saved game.
 
 ## [0.1.0]
 
