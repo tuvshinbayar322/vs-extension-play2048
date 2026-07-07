@@ -6,6 +6,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-07-07
+
+### Added
+- Smooth tile animations: tiles slide to their new positions, newly spawned tiles pop in, and merged tiles bounce.
+
+### Fixed
+- Best score now updates live during play, so it is preserved when starting a new game before the board fills up.
+
 ## [0.0.1] - 2026-07-06
 
 ### Added

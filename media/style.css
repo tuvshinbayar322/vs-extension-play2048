@@ -66,15 +66,40 @@ h1 {
 }
 
 .game-board {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    grid-gap: 8px;
+    position: relative;
     background-color: var(--vscode-input-background);
-    padding: 8px;
+    padding: 0;
     border-radius: 6px;
     aspect-ratio: 1;
     margin-bottom: 16px;
     border: 2px solid var(--vscode-textLink-foreground);
+}
+
+/* Static background grid (empty slots) */
+.grid-background {
+    position: absolute;
+    inset: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 8px;
+    z-index: 1;
+}
+
+.grid-cell {
+    border-radius: 4px;
+    background-color: var(--vscode-sideBar-background);
+}
+
+/* Overlay layer that holds the moving tiles */
+.tile-container {
+    position: absolute;
+    inset: 8px;
+    z-index: 2;
+}
+
+.tile-container.no-anim .tile {
+    transition: none !important;
 }
 
 /* Game Over / Win overlay */
@@ -126,7 +151,19 @@ h1 {
     font-size: 13px;
 }
 
+/* Outer tile: positions itself over a slot and slides via transform */
 .tile {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: transform 0.12s ease-in-out;
+    will-change: transform;
+}
+
+/* Inner tile: paints the color/number and plays pop/appear animations */
+.tile-inner {
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -135,80 +172,95 @@ h1 {
     font-size: 24px;
     background-color: var(--vscode-editor-background);
     color: var(--vscode-foreground);
-    transition: all 0.15s ease-in-out;
-    position: relative;
+    transition: background-color 0.1s ease-in-out;
 }
 
-.tile.empty {
-    background-color: var(--vscode-sideBar-background);
-    color: transparent;
+/* Newly spawned tiles pop into existence (after slides settle) */
+.tile.tile-new .tile-inner {
+    animation: tile-appear 0.14s ease 0.09s both;
+}
+
+/* Merge result gives a satisfying bounce */
+.tile.tile-merged .tile-inner {
+    animation: tile-pop 0.16s ease;
+}
+
+@keyframes tile-appear {
+    0% { opacity: 0; transform: scale(0); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes tile-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.22); }
+    100% { transform: scale(1); }
 }
 
 /* Tile colors based on value - using VS Code theme colors */
-.tile[data-value="2"] {
+.tile[data-value="2"] .tile-inner {
     background-color: var(--vscode-terminal-ansiWhite);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="4"] {
+.tile[data-value="4"] .tile-inner {
     background-color: var(--vscode-terminal-ansiYellow);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="8"] {
+.tile[data-value="8"] .tile-inner {
     background-color: var(--vscode-terminal-ansiGreen);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="16"] {
+.tile[data-value="16"] .tile-inner {
     background-color: var(--vscode-terminal-ansiCyan);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="32"] {
+.tile[data-value="32"] .tile-inner {
     background-color: var(--vscode-terminal-ansiBlue);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="64"] {
+.tile[data-value="64"] .tile-inner {
     background-color: var(--vscode-terminal-ansiMagenta);
     color: var(--vscode-editor-background);
 }
 
-.tile[data-value="128"] {
+.tile[data-value="128"] .tile-inner {
     background-color: var(--vscode-terminal-ansiRed);
     color: var(--vscode-editor-background);
     font-size: 20px;
 }
 
-.tile[data-value="256"] {
+.tile[data-value="256"] .tile-inner {
     background-color: var(--vscode-notificationLink-foreground);
     color: var(--vscode-editor-background);
     font-size: 20px;
 }
 
-.tile[data-value="512"] {
+.tile[data-value="512"] .tile-inner {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     font-size: 18px;
 }
 
-.tile[data-value="1024"] {
+.tile[data-value="1024"] .tile-inner {
     background-color: var(--vscode-button-hoverBackground);
     color: var(--vscode-button-foreground);
     font-size: 18px;
 }
 
-.tile[data-value="2048"] {
+.tile[data-value="2048"] .tile-inner {
     background-color: var(--vscode-textLink-foreground);
     color: var(--vscode-editor-background);
     font-size: 20px;
     box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
 }
 
-.tile[data-value="4096"],
-.tile[data-value="8192"],
-.tile[data-value="16384"] {
+.tile[data-value="4096"] .tile-inner,
+.tile[data-value="8192"] .tile-inner,
+.tile[data-value="16384"] .tile-inner {
     background-color: var(--vscode-input-background);
     color: var(--vscode-textLink-foreground);
     font-size: 16px;
@@ -314,12 +366,16 @@ h1 {
 
 /* Responsive adjustments for small screens */
 @media (max-width: 400px) {
-    .game-board {
-        grid-gap: 6px;
-        padding: 6px;
+    .grid-background,
+    .tile-container {
+        inset: 6px;
     }
 
-    .tile {
+    .grid-background {
+        gap: 6px;
+    }
+
+    .tile-inner {
         font-size: 20px;
     }
 
