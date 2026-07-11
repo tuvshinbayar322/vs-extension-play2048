@@ -4,7 +4,12 @@ All notable changes to the "lets-play-2048" extension will be documented in this
 
 ## [Unreleased]
 
-## [0.1.1]
+## [0.1.3]
+
+### Updated
+- Now the AI is much stronger.
+
+## [0.1.2]
 
 ### Added
 - "Hint" button: suggests the best move by highlighting the matching arrow button, at the cost of 10% of the current score.
@@ -12,6 +17,8 @@ All notable changes to the "lets-play-2048" extension will be documented in this
 
 ### Fixed
 - The activity bar view and the command panel now stay in sync: a move, hint, or AI action made in one is immediately reflected in the other, and both persist to the same saved game.
+
+## [0.1.1] - accidentally skipped a patch (no such version)
 
 ## [0.1.0]
 

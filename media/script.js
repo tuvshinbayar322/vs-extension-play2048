@@ -26,6 +26,320 @@ class Tile {
     }
 }
 
+// ---------------- Theme-derived tile colors ----------------
+//
+// Four "anchor" colors are chosen from whatever colors the current theme
+// exposes (chart palette, terminal ANSI palette, UI accents) by picking the
+// four most spread out from each other and from the board. Each anchor owns
+// a family of tiles; the larger tiles in a family reuse the anchor's hue in
+// a different shade. Everything is computed in OKLab, so lightness steps and
+// "how different two colors look" are perceptually uniform.
+//   2   -> anchor A
+//   4   -> anchor B, 8 a shade of it
+//   16  -> anchor C, 32/64 shades of it
+//   128 -> anchor D, 256/512/1024 shades of it
+// Tiles 2048+ share the "background" look. When two anchors would clash, the
+// later one is nudged in lightness only, so it stays within the theme.
+
+function parseColorToRgb(str) {
+    str = (str || '').trim();
+    let r, g, b, a = 1;
+    if (str[0] === '#') {
+        const hex = str.slice(1);
+        if (hex.length === 3 || hex.length === 4) {
+            r = parseInt(hex[0] + hex[0], 16);
+            g = parseInt(hex[1] + hex[1], 16);
+            b = parseInt(hex[2] + hex[2], 16);
+            if (hex.length === 4) a = parseInt(hex[3] + hex[3], 16) / 255;
+        } else if (hex.length >= 6) {
+            r = parseInt(hex.slice(0, 2), 16);
+            g = parseInt(hex.slice(2, 4), 16);
+            b = parseInt(hex.slice(4, 6), 16);
+            if (hex.length >= 8) a = parseInt(hex.slice(6, 8), 16) / 255;
+        }
+    } else {
+        const m = str.match(/rgba?\(([^)]+)\)/);
+        if (m) {
+            const p = m[1].split(',').map(x => parseFloat(x));
+            [r, g, b] = p;
+            if (p[3] !== undefined) a = p[3];
+        }
+    }
+    if (r === undefined || Number.isNaN(r)) return null;
+    return { r: r / 255, g: g / 255, b: b / 255, a };
+}
+
+function srgbToLinear(v) {
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function linearToSrgb(v) {
+    return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+// sRGB (0..1) -> OKLab. OKLab is perceptually uniform: equal steps in L look
+// like equal steps in brightness, and Euclidean distance between two OKLab
+// colors tracks how different they actually look.
+function rgbToOklab(r, g, b) {
+    const lr = srgbToLinear(r), lg = srgbToLinear(g), lb = srgbToLinear(b);
+    const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+    const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+    const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+    return {
+        L: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        b: 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+    };
+}
+
+function oklabToRgb(c) {
+    const l = c.L + 0.3963377774 * c.a + 0.2158037573 * c.b;
+    const m = c.L - 0.1055613458 * c.a - 0.0638541728 * c.b;
+    const s = c.L - 0.0894841775 * c.a - 1.2914855480 * c.b;
+    const l3 = l * l * l, m3 = m * m * m, s3 = s * s * s;
+    return [
+        linearToSrgb( 4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3),
+        linearToSrgb(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3),
+        linearToSrgb(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3)
+    ];
+}
+
+function oklabDist(x, y) {
+    return Math.hypot(x.L - y.L, x.a - y.a, x.b - y.b);
+}
+
+// Chroma is the OKLCH radius: how colorful (vs gray) the color is.
+function chroma(c) {
+    return Math.hypot(c.a, c.b);
+}
+
+function clampL(v) {
+    return Math.max(0.3, Math.min(v, 0.92));
+}
+
+// WCAG relative luminance of an sRGB triple (0..1 channels).
+function relLuminance(rgb) {
+    const f = v => {
+        v = Math.max(0, Math.min(1, v));
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+
+function inGamut(rgb) {
+    return rgb.every(v => v >= -0.001 && v <= 1.001);
+}
+
+// OKLab -> CSS color. If the color falls outside sRGB, its chroma is scaled
+// down (hue and lightness kept) until it fits, so a shade stays on the same
+// hue instead of clipping toward a different one.
+function oklabToCss(c) {
+    let rgb = oklabToRgb(c);
+    if (!inGamut(rgb)) {
+        let lo = 0, hi = 1;
+        for (let i = 0; i < 14; i++) {
+            const mid = (lo + hi) / 2;
+            if (inGamut(oklabToRgb({ L: c.L, a: c.a * mid, b: c.b * mid }))) lo = mid;
+            else hi = mid;
+        }
+        rgb = oklabToRgb({ L: c.L, a: c.a * lo, b: c.b * lo });
+    }
+    const ch = v => Math.round(Math.max(0, Math.min(1, v)) * 255);
+    return { css: `rgb(${ch(rgb[0])}, ${ch(rgb[1])}, ${ch(rgb[2])})`, rgb };
+}
+
+// Black or white text, whichever contrasts better with the tile color.
+function bestTextFor(rgb) {
+    const L = relLuminance(rgb);
+    const withWhite = 1.05 / (L + 0.05);
+    const withBlack = (L + 0.05) / 0.05;
+    return withBlack >= withWhite ? 'rgba(0, 0, 0, 0.85)' : '#ffffff';
+}
+
+// Distance below which two tile colors read as "the same" (OKLab deltaE).
+// Anchors and the board use the larger gap; shades within a family are let
+// closer, so they still look like the same color, lighter or darker.
+const MIN_OK = 0.10;
+const SHADE_MIN = 0.055;
+
+// A theme color usable as a tile background: mid lightness with at least a
+// little chroma, so tiles don't come out looking like the (near-gray) board.
+function usableAnchor(c) {
+    return c.L >= 0.35 && c.L <= 0.85 && chroma(c) >= 0.03;
+}
+
+function isDistinct(c, used, min) {
+    return used.every(t => oklabDist(c, t) >= min);
+}
+
+// Keep hue and chroma; step lightness until the color clears everything in
+// `used`. Preferred direction is lighter on dark themes, darker on light.
+function ensureDistinct(c, used, dark, min) {
+    if (isDistinct(c, used, min)) return c;
+    const dir = dark ? 1 : -1;
+    for (let step = 1; step <= 10; step++) {
+        for (const s of [dir, -dir]) {
+            const L = c.L + s * step * 0.045;
+            if (L < 0.3 || L > 0.92) continue;
+            const cand = { L, a: c.a, b: c.b };
+            if (isDistinct(cand, used, min)) return cand;
+        }
+    }
+    return c;
+}
+
+// Farthest-point sampling: repeatedly take the candidate whose nearest
+// already-chosen color (or board color) is furthest away, so the picks are
+// spread across whatever colors the theme actually provides.
+function pickAnchors(candidates, taken, n) {
+    const pool = candidates.slice();
+    const picked = [];
+    while (picked.length < n && pool.length) {
+        const refs = picked.concat(taken);
+        let best = 0, bestScore = -Infinity;
+        for (let i = 0; i < pool.length; i++) {
+            const score = refs.length
+                ? Math.min(...refs.map(t => oklabDist(pool[i], t)))
+                : chroma(pool[i]);
+            if (score > bestScore) { bestScore = score; best = i; }
+        }
+        picked.push(pool.splice(best, 1)[0]);
+    }
+    return picked;
+}
+
+// Themes with fewer than four usable colors (e.g. monochrome) get the rest
+// synthesized from the accent: same chroma, hues fanned out by the golden
+// angle so the invented anchors stay distinct and in the theme's spirit.
+function fillAnchors(existing, taken, accent, dark, n) {
+    const out = existing.slice();
+    const baseHue = Math.atan2(accent.b, accent.a);
+    const c = Math.max(0.06, chroma(accent));
+    const L0 = dark ? 0.62 : 0.58;
+    for (let i = 0; out.length < n && i < 60; i++) {
+        const h = baseHue + i * 2.399963;
+        const cand = {
+            L: clampL(L0 + (i % 2 ? -0.08 : 0.08)),
+            a: Math.cos(h) * c,
+            b: Math.sin(h) * c
+        };
+        if (isDistinct(cand, out.concat(taken), MIN_OK)) out.push(cand);
+    }
+    return out;
+}
+
+// Colors gathered from the theme to choose four anchors from. Chart colors
+// come first (they are designed to be mutually distinct), then the terminal
+// palette and a few UI accents.
+const CANDIDATE_VARS = [
+    '--vscode-charts-red', '--vscode-charts-blue', '--vscode-charts-yellow',
+    '--vscode-charts-orange', '--vscode-charts-green', '--vscode-charts-purple',
+    '--vscode-terminal-ansiRed', '--vscode-terminal-ansiGreen',
+    '--vscode-terminal-ansiYellow', '--vscode-terminal-ansiBlue',
+    '--vscode-terminal-ansiMagenta', '--vscode-terminal-ansiCyan',
+    '--vscode-terminal-ansiBrightRed', '--vscode-terminal-ansiBrightGreen',
+    '--vscode-terminal-ansiBrightYellow', '--vscode-terminal-ansiBrightBlue',
+    '--vscode-terminal-ansiBrightMagenta', '--vscode-terminal-ansiBrightCyan',
+    '--vscode-textLink-foreground', '--vscode-notificationLink-foreground',
+    '--vscode-button-background', '--vscode-button-hoverBackground'
+];
+
+// Each family shares one anchor color; the rest are the same hue in a
+// different shade. 2 stands alone; 4->8; 16->32,64; 128->256,512,1024.
+const TILE_FAMILIES = [
+    [2],
+    [4, 8],
+    [16, 32, 64],
+    [128, 256, 512, 1024]
+];
+
+function computeTileColors() {
+    const cs = getComputedStyle(document.body);
+    const parseLab = name => {
+        const rgb = parseColorToRgb(cs.getPropertyValue(name));
+        return rgb && rgb.a > 0.5 ? rgbToOklab(rgb.r, rgb.g, rgb.b) : null;
+    };
+
+    const editorLab = parseLab('--vscode-editor-background') || { L: 0.15, a: 0, b: 0 };
+    const dark = editorLab.L < 0.5;
+    const accent = parseLab('--vscode-textLink-foreground') || { L: 0.6, a: -0.03, b: -0.13 };
+
+    // Board colors the tiles must not resemble, or a tile looks like a hole.
+    const taken = [];
+    for (const name of ['--vscode-editor-background', '--vscode-sideBar-background', '--vscode-input-background']) {
+        const c = parseLab(name);
+        if (c) taken.push(c);
+    }
+
+    // Distinct, tile-usable colors offered by the theme.
+    const candidates = [];
+    for (const name of CANDIDATE_VARS) {
+        const c = parseLab(name);
+        if (!c || !usableAnchor(c)) continue;
+        if (!isDistinct(c, taken, MIN_OK)) continue;      // too close to the board
+        if (!isDistinct(c, candidates, MIN_OK)) continue; // duplicate of one taken
+        candidates.push(c);
+    }
+
+    let anchors = pickAnchors(candidates, taken, 4);
+    if (anchors.length < 4) anchors = fillAnchors(anchors, taken, accent, dark, 4);
+    anchors.sort((x, y) => chroma(x) - chroma(y)); // calm -> vivid as value grows
+
+    const colors = new Map();
+    const used = taken.slice();
+    const place = (value, lab) => {
+        const out = oklabToCss(lab);
+        colors.set(value, { bg: out.css, fg: bestTextFor(out.rgb) });
+    };
+
+    const dir = dark ? 1 : -1;
+    const offsets = [dir * 0.085, -dir * 0.085, dir * 0.17, -dir * 0.17, dir * 0.255];
+
+    TILE_FAMILIES.forEach((family, i) => {
+        const anchor = ensureDistinct(anchors[i], used, dark, MIN_OK);
+        used.push(anchor);
+        place(family[0], anchor);
+
+        // Shades keep the anchor's hue/chroma and only move in lightness.
+        let oi = 0;
+        for (let k = 1; k < family.length; k++) {
+            let shade = null;
+            for (; oi < offsets.length && !shade; oi++) {
+                const L = anchor.L + offsets[oi];
+                if (L < 0.32 || L > 0.9) continue;
+                const cand = { L, a: anchor.a, b: anchor.b };
+                if (isDistinct(cand, used, SHADE_MIN)) shade = cand;
+            }
+            if (!shade) {
+                shade = ensureDistinct(
+                    { L: clampL(anchor.L + dir * 0.085 * k), a: anchor.a, b: anchor.b },
+                    used, dark, SHADE_MIN
+                );
+            }
+            used.push(shade);
+            place(family[k], shade);
+        }
+    });
+    return colors;
+}
+
+let TILE_COLORS = computeTileColors();
+
+// Colors are applied per element (the webview CSP blocks injected <style>
+// tags, but programmatic style properties are fine).
+function applyTileColor(innerEl, value) {
+    if (value >= 2048) {
+        innerEl.style.backgroundColor = 'var(--vscode-input-background)';
+        innerEl.style.color = 'var(--vscode-textLink-foreground)';
+    } else {
+        const c = TILE_COLORS.get(value);
+        if (c) {
+            innerEl.style.backgroundColor = c.bg;
+            innerEl.style.color = c.fg;
+        }
+    }
+}
+
 class Game2048 {
     constructor() {
         this.bestScore = Number(localStorage.getItem('2048-best')) || 0;
@@ -249,6 +563,7 @@ class Game2048 {
         const inner = document.createElement('div');
         inner.className = 'tile-inner';
         inner.textContent = value;
+        applyTileColor(inner, value);
         el.appendChild(inner);
         return el;
     }
@@ -256,7 +571,9 @@ class Game2048 {
     updateTileEl(el, value) {
         if (el.dataset.value !== String(value)) {
             el.dataset.value = value;
-            el.querySelector('.tile-inner').textContent = value;
+            const inner = el.querySelector('.tile-inner');
+            inner.textContent = value;
+            applyTileColor(inner, value);
         }
     }
 
@@ -318,6 +635,15 @@ class Game2048 {
                     this.tileEls.delete(id);
                 }
             }
+
+            // The glow follows the current highest tile(s), but only once the
+            // player has actually reached 2048.
+            let maxVal = 0;
+            this.forEachTile(t => { if (t.value > maxVal) maxVal = t.value; });
+            this.forEachTile(t => {
+                const el = this.tileEls.get(t.id);
+                if (el) el.classList.toggle('tile-max', maxVal >= 2048 && t.value === maxVal);
+            });
         }
 
         this.renderScore();
@@ -452,152 +778,212 @@ function doMove(direction) {
     game.render();
 }
 
-// ---------------- AI (expectimax search) ----------------
+// ---------------- AI (expectimax over precomputed row tables) ----------------
+//
+// Each row is encoded as a 16-bit int (4 cells x 4-bit tile exponents), so
+// the slide result and heuristic score of every possible row is precomputed
+// once into lookup tables. A board is 4 such rows; vertical moves go through
+// a transpose. This makes search nodes cheap enough for deep lookahead.
 
 const AI_DIRECTIONS = ['up', 'down', 'left', 'right'];
 
-// Slide + merge one 4-cell line toward index 0.
-function aiSlideLine(line) {
-    const tiles = line.filter(v => v !== 0);
-    const out = [];
-    for (let i = 0; i < tiles.length; i++) {
-        if (i + 1 < tiles.length && tiles[i] === tiles[i + 1]) {
-            out.push(tiles[i] * 2);
-            i++;
-        } else {
-            out.push(tiles[i]);
-        }
+const ROW_LEFT = new Uint16Array(65536);
+const ROW_RIGHT = new Uint16Array(65536);
+const ROW_HEUR = new Float64Array(65536);
+
+{
+    const reverseRow = r =>
+        ((r & 0xf) << 12) | (((r >> 4) & 0xf) << 8) | (((r >> 8) & 0xf) << 4) | ((r >> 12) & 0xf);
+
+    const POW35 = [];
+    const POW4 = [];
+    for (let i = 0; i < 16; i++) {
+        POW35[i] = Math.pow(i, 3.5);
+        POW4[i] = Math.pow(i, 4);
     }
-    while (out.length < 4) out.push(0);
-    return out;
+
+    for (let row = 0; row < 65536; row++) {
+        const cells = [row & 0xf, (row >> 4) & 0xf, (row >> 8) & 0xf, (row >> 12) & 0xf];
+
+        // Slide + merge toward index 0 (exponents; merging bumps the rank).
+        const tiles = cells.filter(v => v);
+        const out = [];
+        for (let i = 0; i < tiles.length; i++) {
+            if (i + 1 < tiles.length && tiles[i] === tiles[i + 1] && tiles[i] < 15) {
+                out.push(tiles[i] + 1);
+                i++;
+            } else {
+                out.push(tiles[i]);
+            }
+        }
+        while (out.length < 4) out.push(0);
+        const slid = out[0] | (out[1] << 4) | (out[2] << 8) | (out[3] << 12);
+
+        ROW_LEFT[row] = slid;
+        ROW_RIGHT[reverseRow(row)] = reverseRow(slid);
+
+        // Row heuristic: reward empty cells and adjacent merge opportunities,
+        // punish broken monotonicity and large scattered ranks.
+        let sum = 0, empty = 0, merges = 0, prev = 0, run = 0;
+        for (let i = 0; i < 4; i++) {
+            const rank = cells[i];
+            sum += POW35[rank];
+            if (rank === 0) { empty++; continue; }
+            if (prev === rank) {
+                run++;
+            } else {
+                if (run) merges += 1 + run;
+                run = 0;
+            }
+            prev = rank;
+        }
+        if (run) merges += 1 + run;
+
+        let monoLeft = 0, monoRight = 0;
+        for (let i = 1; i < 4; i++) {
+            if (cells[i - 1] > cells[i]) monoLeft += POW4[cells[i - 1]] - POW4[cells[i]];
+            else monoRight += POW4[cells[i]] - POW4[cells[i - 1]];
+        }
+
+        ROW_HEUR[row] = 200000
+            + 270 * empty
+            + 700 * merges
+            - 47 * Math.min(monoLeft, monoRight)
+            - 11 * sum;
+    }
 }
 
-// Apply a move to a plain numeric grid. Returns the new grid, or null if
-// nothing moved.
-function aiSimulate(grid, direction) {
-    const g = grid.map(r => r.slice());
-    const horizontal = direction === 'left' || direction === 'right';
-    const reversed = direction === 'right' || direction === 'down';
-    let moved = false;
-
-    for (let i = 0; i < 4; i++) {
-        let line = horizontal
-            ? g[i].slice()
-            : [g[0][i], g[1][i], g[2][i], g[3][i]];
-        if (reversed) line.reverse();
-        line = aiSlideLine(line);
-        if (reversed) line.reverse();
-        for (let j = 0; j < 4; j++) {
-            const target = horizontal ? [i, j] : [j, i];
-            if (g[target[0]][target[1]] !== line[j]) moved = true;
-            g[target[0]][target[1]] = line[j];
-        }
-    }
-    return moved ? g : null;
-}
-
-// Board quality heuristic: prefer empty space, monotone rows/columns
-// (big tiles packed toward one side), smooth neighbor values, and a high
-// max tile.
-function aiEvaluate(grid) {
-    let empty = 0;
-    let smooth = 0;
-    let maxVal = 2;
-
+// 4x4 value grid -> array of 4 row codes (tile exponents).
+function aiBoardFromGrid(grid) {
+    const rows = [0, 0, 0, 0];
     for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 4; c++) {
             const v = grid[r][c];
-            if (!v) { empty++; continue; }
-            if (v > maxVal) maxVal = v;
-            const lv = Math.log2(v);
-            // Smoothness: penalize value gaps to the nearest tile right/down.
-            for (const [dr, dc] of [[0, 1], [1, 0]]) {
-                let nr = r + dr, nc = c + dc;
-                while (nr < 4 && nc < 4 && !grid[nr][nc]) { nr += dr; nc += dc; }
-                if (nr < 4 && nc < 4) smooth -= Math.abs(lv - Math.log2(grid[nr][nc]));
-            }
+            if (v) rows[r] |= Math.round(Math.log2(v)) << (c * 4);
         }
     }
-
-    // Monotonicity: for each row/column take the better of the two
-    // directions (penalties are negative, so max = least broken).
-    let mono = 0;
-    for (let i = 0; i < 4; i++) {
-        let rowInc = 0, rowDec = 0, colInc = 0, colDec = 0;
-        for (let j = 0; j < 3; j++) {
-            const a = grid[i][j] ? Math.log2(grid[i][j]) : 0;
-            const b = grid[i][j + 1] ? Math.log2(grid[i][j + 1]) : 0;
-            if (a > b) rowDec += b - a; else rowInc += a - b;
-            const ca = grid[j][i] ? Math.log2(grid[j][i]) : 0;
-            const cb = grid[j + 1][i] ? Math.log2(grid[j + 1][i]) : 0;
-            if (ca > cb) colDec += cb - ca; else colInc += ca - cb;
-        }
-        mono += Math.max(rowInc, rowDec) + Math.max(colInc, colDec);
-    }
-
-    return 2.7 * empty + 1.0 * mono + 0.1 * smooth + 1.0 * Math.log2(maxVal);
+    return rows;
 }
 
-// Player node: best achievable value over all legal moves.
-function aiSearchMove(grid, depth) {
-    let best = -Infinity;
-    for (const dir of AI_DIRECTIONS) {
-        const next = aiSimulate(grid, dir);
-        if (next) best = Math.max(best, aiChance(next, depth));
-    }
-    return best === -Infinity ? -10000 : best; // no legal move = dead board
-}
-
-// Chance node: expected value over random tile spawns (2 with 90%, 4 with 10%).
-function aiChance(grid, depth) {
-    if (depth <= 0) return aiEvaluate(grid);
-
-    const empties = [];
+function aiTranspose(b) {
+    const t = [0, 0, 0, 0];
     for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 4; c++) {
-            if (!grid[r][c]) empties.push([r, c]);
+            t[c] |= ((b[r] >> (c * 4)) & 0xf) << (r * 4);
         }
     }
-    if (empties.length === 0) return aiEvaluate(grid);
-
-    // Cap branching on open boards to keep the search fast.
-    let cells = empties;
-    if (cells.length > 6) {
-        cells = empties.slice();
-        for (let i = cells.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [cells[i], cells[j]] = [cells[j], cells[i]];
-        }
-        cells = cells.slice(0, 6);
-    }
-
-    let total = 0;
-    for (const [r, c] of cells) {
-        grid[r][c] = 2;
-        total += 0.9 * aiSearchMove(grid, depth - 1);
-        grid[r][c] = 4;
-        total += 0.1 * aiSearchMove(grid, depth - 1);
-        grid[r][c] = 0;
-    }
-    return total / cells.length;
+    return t;
 }
 
-// Find the best move for the current position (deeper search when the
-// board is crowded and decisions matter most).
-function findBestMove(grid) {
-    const empties = grid.flat().filter(v => !v).length;
-    const depth = empties >= 5 ? 2 : 3;
+// Apply a move via the row tables. Returns the new board, or null if
+// nothing moved.
+function aiApplyMove(b, direction) {
+    let res;
+    if (direction === 'left') {
+        res = [ROW_LEFT[b[0]], ROW_LEFT[b[1]], ROW_LEFT[b[2]], ROW_LEFT[b[3]]];
+    } else if (direction === 'right') {
+        res = [ROW_RIGHT[b[0]], ROW_RIGHT[b[1]], ROW_RIGHT[b[2]], ROW_RIGHT[b[3]]];
+    } else {
+        const t = aiTranspose(b);
+        const table = direction === 'up' ? ROW_LEFT : ROW_RIGHT;
+        res = aiTranspose([table[t[0]], table[t[1]], table[t[2]], table[t[3]]]);
+    }
+    return (res[0] === b[0] && res[1] === b[1] && res[2] === b[2] && res[3] === b[3])
+        ? null
+        : res;
+}
 
-    let bestDir = null;
-    let bestVal = -Infinity;
+// Board quality = row heuristics + column heuristics (via transpose).
+function aiEvaluate(b) {
+    const t = aiTranspose(b);
+    return ROW_HEUR[b[0]] + ROW_HEUR[b[1]] + ROW_HEUR[b[2]] + ROW_HEUR[b[3]]
+        + ROW_HEUR[t[0]] + ROW_HEUR[t[1]] + ROW_HEUR[t[2]] + ROW_HEUR[t[3]];
+}
+
+// Transposition cache for the current search (board key -> value at depth).
+let aiCache = new Map();
+
+// Player node: best value over all legal moves. A dead board returns 0,
+// which is a massive penalty against the heuristic's per-row constant.
+function aiMaxNode(b, depth, cprob) {
+    let best = 0;
     for (const dir of AI_DIRECTIONS) {
-        const next = aiSimulate(grid, dir);
-        if (!next) continue;
-        const val = aiChance(next, depth - 1);
-        if (val > bestVal) {
-            bestVal = val;
-            bestDir = dir;
+        const next = aiApplyMove(b, dir);
+        if (next) {
+            const val = aiChanceNode(next, depth, cprob);
+            if (val > best) best = val;
         }
+    }
+    return best;
+}
+
+// Chance node: expected value over every possible tile spawn (2 with 90%,
+// 4 with 10%). Branches whose cumulative probability is negligible are
+// cut off at the heuristic.
+function aiChanceNode(b, depth, cprob) {
+    if (depth <= 0 || cprob < 0.0001) return aiEvaluate(b);
+
+    const key = b[0] + ',' + b[1] + ',' + b[2] + ',' + b[3];
+    const hit = aiCache.get(key);
+    if (hit !== undefined && hit.depth >= depth) return hit.value;
+
+    const spots = [];
+    for (let r = 0; r < 4; r++) {
+        for (let shift = 0; shift < 16; shift += 4) {
+            if (((b[r] >> shift) & 0xf) === 0) spots.push(r * 16 + shift);
+        }
+    }
+    cprob /= spots.length;
+
+    let total = 0;
+    for (const spot of spots) {
+        const r = (spot / 16) | 0;
+        const shift = spot % 16;
+        const spawned = b.slice();
+        spawned[r] = b[r] | (1 << shift);
+        total += 0.9 * aiMaxNode(spawned, depth - 1, cprob * 0.9);
+        spawned[r] = b[r] | (2 << shift);
+        total += 0.1 * aiMaxNode(spawned, depth - 1, cprob * 0.1);
+    }
+    total /= spots.length;
+
+    aiCache.set(key, { depth, value: total });
+    return total;
+}
+
+// Time budget per AI decision. Deeper search = stronger play; this bounds
+// how long the UI thread is blocked per move.
+const AI_TIME_BUDGET_MS = 80;
+
+// Find the best move for the current position: iterative deepening until
+// the time budget says the next depth won't fit.
+function findBestMove(grid, budget = AI_TIME_BUDGET_MS) {
+    const board = aiBoardFromGrid(grid);
+    const start = performance.now();
+    let bestDir = null;
+
+    for (let depth = 2; depth <= 8; depth++) {
+        const iterStart = performance.now();
+        aiCache = new Map();
+
+        let dir = null;
+        let bestVal = -Infinity;
+        for (const d of AI_DIRECTIONS) {
+            const next = aiApplyMove(board, d);
+            if (!next) continue;
+            const val = aiChanceNode(next, depth - 1, 1);
+            if (val > bestVal) {
+                bestVal = val;
+                dir = d;
+            }
+        }
+        if (!dir) break; // no legal moves
+        bestDir = dir;
+
+        // Each extra ply costs roughly an order of magnitude more; only
+        // start the next depth if that plausibly fits the budget.
+        const now = performance.now();
+        if ((now - start) + (now - iterStart) * 8 > budget) break;
     }
     return bestDir;
 }
@@ -749,6 +1135,20 @@ if (typeof ResizeObserver !== 'undefined') {
     const ro = new ResizeObserver(() => game.relayout());
     const board = document.getElementById('gameBoard');
     if (board) ro.observe(board);
+}
+
+// Re-derive tile colors when the VS Code theme changes (the webview gets
+// new CSS variables and updated attributes on <html>/<body>).
+{
+    const themeObserver = new MutationObserver(() => {
+        TILE_COLORS = computeTileColors();
+        game.forEachTile(t => {
+            const el = game.tileEls.get(t.id);
+            if (el) applyTileColor(el.querySelector('.tile-inner'), t.value);
+        });
+    });
+    themeObserver.observe(document.documentElement, { attributes: true });
+    themeObserver.observe(document.body, { attributes: true });
 }
 
 // Ensure the webview can receive keyboard events immediately
